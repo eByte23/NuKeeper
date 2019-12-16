@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using NuGet.Common;
 using NuGet.Configuration;
+using NuGet.Credentials;
 using NuGet.Protocol.Core.Types;
 using NuKeeper.Abstractions.Logging;
 using NuKeeper.Abstractions.NuGet;
@@ -42,12 +44,22 @@ namespace NuKeeper.Inspection.NuGetApi
         private async Task<IEnumerable<PackageSearchMetadata>> RunFinderForSource(
             string packageName, bool includePrerelease, PackageSource source)
         {
+            DefaultCredentialServiceUtility.SetupDefaultCredentialService(_nuGetLogger, true);
             var sourceRepository = _packageSources.Get(source);
             try
             {
                 var metadataResource = await sourceRepository.GetResourceAsync<PackageMetadataResource>();
                 var metadatas = await FindPackage(metadataResource, packageName, includePrerelease);
                 return metadatas.Select(m => BuildPackageData(source, m));
+            }
+            catch (FatalProtocolException ex)
+            {
+                if (ex?.InnerException is HttpRequestException && ex.InnerException.Message.Contains("401"))
+                {
+                    var a = ex.Message;
+                    _nuKeeperLogger.Error("PackageSource return a 401", ex);
+                }
+                return Enumerable.Empty<PackageSearchMetadata>();
             }
 #pragma warning disable CA1031
             catch (Exception ex)
